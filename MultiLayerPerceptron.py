@@ -38,6 +38,13 @@ class Layer:
             z = math.exp(x)
             return z / (1 + z)
 
+    def _activation_function_tahn(self,x):
+        e2x = np.exp(2*x)
+        t = (e2x-1) / (1 + e2x)
+        return t
+
+    def _activation_function_relu(self,x):
+        return max(0,x)
 
     
     def __init__(self,neurons_count=1,activation_fun="sigmoid",add_bias=True):
@@ -55,13 +62,17 @@ class Layer:
         
 
     def set_activation_function(self,fun_name):
+        self.activation_function_name = fun_name + " function"
         if fun_name == "sigmoid":
-            self.activation_function_name = fun_name + " function"
             self.activation_fun = np.vectorize(self._activation_function_sigmoid)
         elif fun_name == "linear":
-            self.activation_function_name = fun_name + " function"
             self.activation_fun = np.vectorize(self._activation_function_linear)
+        elif fun_name == "tahn":
+            self.activation_fun = np.vectorize(self._activation_function_tahn)
+        elif fun_name == "relu":
+            self.activation_fun = np.vectorize(self._activation_function_relu)
         else:
+            self.activation_function_name = None
             raise Exception(f"Unknown activation function selected: {fun_name}\nAvailable functions are: 'sigmoid' and 'linear'.")
 
     def __str__(self):
