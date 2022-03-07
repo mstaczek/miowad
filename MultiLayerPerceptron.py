@@ -83,11 +83,12 @@ class Layer:
         
 
 class NeuralNetwork:
-    def __init__(self, weights_random = True):
+    def __init__(self, weights_random = True, weights_randomizer = "uniform"):
         self.layers = []
         self.neuron_values = []
         self.weights = []
         self._weights_random = weights_random
+        self._weights_randomizer = weights_randomizer
     
     def __str__(self):
         txt = "Neural network layers:\n" 
@@ -104,6 +105,17 @@ class NeuralNetwork:
         self.layers.append(new_layer)
         if self._weights_random and len(self.layers) > 1:
             self.set_weights_randomized(after_layer = len(self.layers)-1)
+
+    def _randomize_weights(self,size_input,size_output):
+        if self._weights_randomizer == "uniform":
+            return np.random.uniform(size=(size_input,size_output))
+        elif self._weights_randomizer == "xavier":
+            limit = math.sqrt(6 / (size_input + size_output))
+            return np.random.uniform(low=-limit,high=limit,size=(size_input,size_output))
+        elif self._weights_randomizer == "he":
+            return np.random.normal(loc=0,scale=np.sqrt(2/size_input),size=(size_input,size_output))
+        else:
+            raise Exception(f"Unknown weights randomizer: {self._weights_randomizer}")
             
     def set_weights_randomized(self,after_layer = None):
         if after_layer is not None and after_layer >= 1:
@@ -112,7 +124,7 @@ class NeuralNetwork:
             size_output = size_output - 1 if self.layers[after_layer].add_bias else size_output
             if len(self.weights) < len(self.layers) - 1:
                 self.weights.append(None) # make list longer
-            self.weights[after_layer - 1] = np.random.randn(size_input,size_output)
+            self.weights[after_layer - 1] = self._randomize_weights(size_input,size_output)
         elif after_layer is None:
             for i in range(len(self.layers)):
                 self.set_weights_randomized(i+1)
