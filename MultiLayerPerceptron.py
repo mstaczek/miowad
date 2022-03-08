@@ -38,13 +38,28 @@ class Layer:
             z = math.exp(x)
             return z / (1 + z)
 
-    def _activation_function_tahn(self,x):
+    def _activation_function_tanh(self,x):
         e2x = np.exp(2*x)
         t = (e2x-1) / (1 + e2x)
         return t
 
     def _activation_function_relu(self,x):
-        return max(0,x)
+        return x if x > 0 else 0
+
+
+    def _activation_function_linear_grad(self,x):
+        return 1
+
+    def _activation_function_sigmoid_grad(self,x):
+        sigmoid_val = self._activation_function_sigmoid(x)
+        return sigmoid_val * (1 - sigmoid_val)
+
+    def _activation_function_tanh_grad(self,x):
+        tanh_val = self._activation_function_tanh(x)
+        return 1 - tanh_val**2
+
+    def _activation_function_relu_grad(self,x):
+        return 1 if x > 0 else 0
 
     
     def __init__(self,neurons_count=1,activation_fun="sigmoid",add_bias=True):
@@ -62,18 +77,20 @@ class Layer:
         
 
     def set_activation_function(self,fun_name):
-        self.activation_function_name = fun_name + " function"
         if fun_name == "sigmoid":
-            self.activation_fun = np.vectorize(self._activation_function_sigmoid)
+            chosen_function = self._activation_function_sigmoid
         elif fun_name == "linear":
-            self.activation_fun = np.vectorize(self._activation_function_linear)
-        elif fun_name == "tahn":
-            self.activation_fun = np.vectorize(self._activation_function_tahn)
+            chosen_function = self._activation_function_linear
+        elif fun_name == "tanh":
+            chosen_function = self._activation_function_tanh
         elif fun_name == "relu":
-            self.activation_fun = np.vectorize(self._activation_function_relu)
+            chosen_function = self._activation_function_relu
         else:
             self.activation_function_name = None
-            raise Exception(f"Unknown activation function selected: {fun_name}\nAvailable functions are: 'sigmoid' and 'linear'.")
+            raise Exception(f"Unknown activation function selected: {fun_name}\nAvailable functions are: 'sigmoid', 'linear', 'tanh' and 'relu'.")
+        self.activation_function_name = fun_name + " function"
+        self.activation_fun = np.vectorize(chosen_function)
+
 
     def __str__(self):
         txt = f"Layer has {self.neurons_count} neurons"
@@ -162,3 +179,5 @@ class NeuralNetwork:
             return self._predict_list(input_raw)
         elif isinstance(input_raw[0],float) or isinstance(input_raw[0],int):
             return self._predict_single(input_raw)
+
+
