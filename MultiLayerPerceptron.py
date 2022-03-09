@@ -46,7 +46,6 @@ class Layer:
     def _activation_function_relu(self,x):
         return x if x > 0 else 0
 
-
     def _activation_function_linear_grad(self,x):
         return 1
 
@@ -61,36 +60,37 @@ class Layer:
     def _activation_function_relu_grad(self,x):
         return 1 if x > 0 else 0
 
-    
     def __init__(self,neurons_count=1,activation_fun="sigmoid",add_bias=True):
         self.add_bias = add_bias
-
+        self.neurons_count = neurons_count
+        self.neurons_vals = np.zeros(self.neurons_count)
         if self.add_bias:
-            self.neurons_count = neurons_count + 1
-            self.neurons_vals = np.zeros(self.neurons_count)
-            self.neurons_vals[0] = 1
-        else:
-            self.neurons_count = neurons_count
-            self.neurons_vals = np.zeros(self.neurons_count)
+            self.neurons_count += 1
+            self.neurons_vals = np.insert(self.neurons_vals,0,1)
 
+        self.neurons_grad_vals = np.zeros(self.neurons_count)
+        self.neurons_error_vals = np.zeros(self.neurons_count)
         self.set_activation_function(activation_fun)
-        
 
     def set_activation_function(self,fun_name):
         if fun_name == "sigmoid":
             chosen_function = self._activation_function_sigmoid
+            chosen_function_grad = self._activation_function_sigmoid_grad
         elif fun_name == "linear":
             chosen_function = self._activation_function_linear
+            chosen_function_grad = self._activation_function_linear_grad
         elif fun_name == "tanh":
             chosen_function = self._activation_function_tanh
+            chosen_function_grad = self._activation_function_tanh_grad
         elif fun_name == "relu":
             chosen_function = self._activation_function_relu
+            chosen_function_grad = self._activation_function_relu_grad
         else:
             self.activation_function_name = None
             raise Exception(f"Unknown activation function selected: {fun_name}\nAvailable functions are: 'sigmoid', 'linear', 'tanh' and 'relu'.")
         self.activation_function_name = fun_name + " function"
         self.activation_fun = np.vectorize(chosen_function)
-
+        self.activation_fun_grad = np.vectorize(chosen_function_grad)
 
     def __str__(self):
         txt = f"Layer has {self.neurons_count} neurons"
@@ -163,6 +163,7 @@ class NeuralNetwork:
             weights = self.weights[i]
             multiplied = layer_in.neurons_vals @ weights
             layer_out.neurons_vals[-multiplied.shape[0]:] = layer_out.activation_fun(multiplied)
+            layer_out.neurons_grad_vals[-multiplied.shape[0]:] = layer_out.activation_fun_grad(multiplied)
             self.layers[i+1] = layer_out
 
         last_layer = self.layers[-1]
@@ -179,5 +180,63 @@ class NeuralNetwork:
             return self._predict_list(input_raw)
         elif isinstance(input_raw[0],float) or isinstance(input_raw[0],int):
             return self._predict_single(input_raw)
+
+
+    def train(self, input_raw, expected_output_raw, learning_rate = 0.1, epochs = 1, verbose = False):
+        input_array = np.array(input_raw)
+        expected_output_array = np.array(expected_output_raw)
+        if len(input_array) != len(expected_output_array):
+            raise Exception("Input and expected output must be of the same length")
+        N = len(input_array)
+        out_length = len(expected_output_array[0])
+        for epoch in range(epochs):
+            weights_grad = [np.zeros(weights_i.shape) for weights_i in self.weights]            
+            for i in range(N):
+                self._predict_single(input_array[i])
+                last_layer = self.layers[-1]
+                last_layer.neurons_error_vals[-out_length:] = \
+                    (last_layer.neurons_vals - expected_output_array[i]) * last_layer.neurons_grad_vals
+                for j in range(len(self.weights)-1,0,-1): # over all layers, updating errors except last layer 
+                    layer_in = self.layers[j]
+                    layer_out = self.layers[j+1]
+                    weights = self.weights[j]
+                    f_prim = layer_in.neurons_grad_vals
+                    errors_k_plus_one = layer_out.neurons_error_vals
+                    weight_k_plus_one = weights
+                    errors_k = f_prim * (weight_k_plus_one @ errors_k_plus_one).T
+
+                    layer_in.neurons_error_vals[-errors_k.shape[0]:] = errors_k
+                    self.layers[j] = layer_in
+
+                # update weights after every example
+                # for j in range(len(self.layers)-1):
+                #     layer_in = self.layers[j]
+                #     layer_out = self.layers[j+1]
+                #     weights = self.weights[j]
+                #     err = layer_out.neurons_error_vals
+                #     l_in = layer_in.neurons_vals
+                #     net_weights_j_grad = err * np.repeat(l_in[:,np.newaxis],len(err),axis=1)
+                #     weights -= learning_rate * net_weights_j_grad
+                #     self.weights[j] = weights
+
+                # update grad, but weights after all samples
+                for j in range(len(self.layers)-1):
+                    layer_in = self.layers[j]
+                    layer_out = self.layers[j+1]
+                    weights = self.weights[j]
+                    err = layer_out.neurons_error_vals
+                    l_in = layer_in.neurons_vals
+                    net_weights_j_grad = err * np.repeat(l_in[:,np.newaxis],len(err),axis=1)
+                    weights_grad[j] += net_weights_j_grad
+
+            # update weights after all samples
+            for j in range(len(self.layers)-1):
+                self.weights[j] -= learning_rate * weights_grad[j]
+            if verbose:
+                print(f"Epoch {epoch}, Weights: {self.weights}")
+        if verbose:
+            return self.weights
+        else:
+            return
 
 
