@@ -188,13 +188,12 @@ class NeuralNetwork:
         if len(input_array) != len(expected_output_array):
             raise Exception("Input and expected output must be of the same length")
         N = len(input_array)
-        out_length = len(expected_output_array[0])
         for epoch in range(epochs):
             weights_grad = [np.zeros(weights_i.shape) for weights_i in self.weights]            
             for i in range(N):
                 self._predict_single(input_array[i])
                 last_layer = self.layers[-1]
-                last_layer.neurons_error_vals[-out_length:] = \
+                last_layer.neurons_error_vals = \
                     (last_layer.neurons_vals - expected_output_array[i]) * last_layer.neurons_grad_vals
                 for j in range(len(self.weights)-1,0,-1): # over all layers, updating errors except last layer 
                     layer_in = self.layers[j]
@@ -205,7 +204,7 @@ class NeuralNetwork:
                     weight_k_plus_one = weights
                     errors_k = f_prim * (weight_k_plus_one @ errors_k_plus_one).T
 
-                    layer_in.neurons_error_vals[-errors_k.shape[0]:] = errors_k
+                    layer_in.neurons_error_vals = errors_k
                     self.layers[j] = layer_in
 
                 # update weights after every example
@@ -213,20 +212,23 @@ class NeuralNetwork:
                 #     layer_in = self.layers[j]
                 #     layer_out = self.layers[j+1]
                 #     weights = self.weights[j]
-                #     err = layer_out.neurons_error_vals
+                #     err = layer_out.neurons_error_vals[-weights.shape[1]:]
                 #     l_in = layer_in.neurons_vals
-                #     net_weights_j_grad = err * np.repeat(l_in[:,np.newaxis],len(err),axis=1)
-                #     weights -= learning_rate * net_weights_j_grad
-                #     self.weights[j] = weights
+                #     l_in_rep_t = np.repeat(l_in[:,np.newaxis],len(err),axis=1)
+                #     net_weights_j_grad = l_in_rep_t * err
+                #     weights_grad[j] += net_weights_j_grad
+                # for j in range(len(self.layers)-1):
+                #     self.weights[j] -= learning_rate * weights_grad[j]
 
                 # update grad, but weights after all samples
                 for j in range(len(self.layers)-1):
                     layer_in = self.layers[j]
                     layer_out = self.layers[j+1]
                     weights = self.weights[j]
-                    err = layer_out.neurons_error_vals
+                    err = layer_out.neurons_error_vals[-weights.shape[1]:]
                     l_in = layer_in.neurons_vals
-                    net_weights_j_grad = err * np.repeat(l_in[:,np.newaxis],len(err),axis=1)
+                    l_in_rep_t = np.repeat(l_in[:,np.newaxis],len(err),axis=1)
+                    net_weights_j_grad = l_in_rep_t * err
                     weights_grad[j] += net_weights_j_grad
 
             # update weights after all samples
