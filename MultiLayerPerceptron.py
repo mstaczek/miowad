@@ -202,9 +202,11 @@ class NeuralNetwork:
                     layer_out = self.layers[j+1]
                     weights = self.weights[j]
                     f_prim = layer_in.neurons_grad_vals
-                    errors_k_plus_one = layer_out.neurons_error_vals
+                    errors_k_plus_one = layer_out.neurons_error_vals[-weights.shape[1]:]
                     weight_k_plus_one = weights
-                    errors_k = f_prim * (weight_k_plus_one @ errors_k_plus_one).T
+
+                    w_times_e = (weight_k_plus_one @ errors_k_plus_one.T).T
+                    errors_k = f_prim * w_times_e
 
                     layer_in.neurons_error_vals = errors_k
                     self.layers[j] = layer_in
