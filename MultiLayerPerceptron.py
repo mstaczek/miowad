@@ -108,6 +108,7 @@ class NeuralNetwork:
         self.weights = []
         self._weights_random = weights_random
         self._weights_randomizer = weights_randomizer
+        self.training_history = {"weights_history":[],"mse_train":[],"mse_test":[]}
     
     def __str__(self):
         txt = "Neural network layers:\n" 
@@ -213,8 +214,8 @@ class NeuralNetwork:
             err = layer_out.neurons_error_vals[-weights.shape[1]:]
             l_in = layer_in.neurons_vals
             l_in_rep_t = np.repeat(l_in[:,np.newaxis],len(err),axis=1)
-            net_weights_j_grad = l_in_rep_t * err
-            net_weights_grad_new.append(net_weights_j_grad/samples_count)
+            net_weights_j_grad = l_in_rep_t * err / samples_count
+            net_weights_grad_new.append(net_weights_j_grad)
         return net_weights_grad_new
 
     def _backprop_update_weights(self,learning_rate,weights_grad):
@@ -232,14 +233,20 @@ class NeuralNetwork:
             pred2 = pred
         return np.square(np.subtract(real2,pred2)).mean() 
     
-    def _get_current_mse(self,samples_count,batch_size,train_in_raw,train_out_raw):
-        errors_train_iter = []
+    def _get_current_mse(self,samples_count,batch_size,in_raw,out_raw):
+        errors_iter = []
         for batch_part_no in list(range(0,min(math.ceil(samples_count/batch_size),samples_count))):
-            batch_train_in = train_in_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
-            batch_train_out = train_out_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
-            y_hat = self.predict(batch_train_in)
-            errors_train_iter += [self._mse(batch_train_out,y_hat)]
-        return np.mean(errors_train_iter)
+            batch_in = in_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
+            batch_out = out_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
+            y_hat = self.predict(batch_in)
+            errors_iter += [self._mse(batch_out,y_hat)]
+        return np.mean(errors_iter)
+    
+    def _print_formatted_mse(self,epoch,epochs,mse_train,mse_test=None,with_test=False):
+        result = f"Epoch:{epoch+1:>5}/{epochs},   MSE train:{round(mse_train,3):>9}"
+        if with_test:
+            result += f",   MSE test:{round(mse_test,3):>9}"
+        print(result)    
 
     def train(self, train_in, train_out, test_in=None, test_out=None, learning_rate=0.01, epochs=1, batch_size=32, verbose=False, debug=False):
         train_input_array = np.array(train_in)
@@ -248,24 +255,23 @@ class NeuralNetwork:
             raise Exception("Input and expected output must be of the same length")
         N = len(train_input_array)
         batch_size = min(batch_size,N) if batch_size > 0 else N
-        
-        for_plot_weights = []
-        for_plot_mse_train = []
-        for_plot_mse_test = []
-        if test_in is not None and test_out is not None:
+## plots  
+        for_plot_weights = self.training_history["weights_history"]
+        for_plot_mse_train = self.training_history["mse_train"]
+        for_plot_mse_test = self.training_history["mse_test"]
+        if test_present:= (test_in is not None and test_out is not None):
             N_test = len(test_in)
-            batch_size_test = min(batch_size,N) if batch_size > 0 else N
+            batch_size_test = min(batch_size,N_test)
 
         for epoch in range(epochs):
 ## plots
             for_plot_weights += [self.weights]
             for_plot_mse_train += [self._get_current_mse(N,batch_size,train_in,train_out)]
-            if test_in is not None and test_out is not None:
+            if test_present:
                 for_plot_mse_test += [self._get_current_mse(N_test,batch_size_test,test_in,test_out)]
 ## prints
             if verbose:
-                print("Epoch:",epoch+1,"/",epochs,", MSE train:",for_plot_mse_train[-1],end="")
-                print(", MSE test:",for_plot_mse_test[-1]) if test_in is not None and test_out is not None else print()
+                self._print_formatted_mse(epoch,epochs,for_plot_mse_train[-1],for_plot_mse_test[-1] if test_present else None,with_test=test_present)
 ## backprop
             for batch_part_no in list(range(0,min(math.ceil(N/batch_size),N))):
                 batch_train_input_array = train_input_array[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
@@ -274,14 +280,24 @@ class NeuralNetwork:
                 for i in range(len(batch_train_input_array)):
                     self._predict_single(batch_train_input_array[i])
                     self._backprop_calculate_errors(batch_train_output_array[i])
-                    weights_grad_new = self._backprop_calculate_gradients(samples_count=batch_size)
+                    weights_grad_new = self._backprop_calculate_gradients(samples_count=len(batch_train_input_array))
                     weights_grad = [weights_grad[j] + weights_grad_new[j] for j in range(len(self.weights))]
-                    print(f"Epoch {epoch+1}, batch {i+1}, new weights gradients:\n{weights_grad_new}") if debug else None
                 self._backprop_update_weights(learning_rate,weights_grad)
+## prints                
             print(f"End of Epoch {epoch+1}, Weights:\n {self.weights}\n") if debug else None
-
-        self.training_history = {"weights":for_plot_weights,"mse_train":for_plot_mse_train,"mse_test":for_plot_mse_test}
-        return {'mse_train':for_plot_mse_train,'mse_test':for_plot_mse_test,'weights_history':for_plot_weights}
+            if epoch % max(10,math.ceil(epochs/1000)*100) == 0:
+                self._print_formatted_mse(epoch,epochs,for_plot_mse_train[-1],for_plot_mse_test[-1] if test_present else None,with_test=test_present)
+                self.training_history = {"weights_history":for_plot_weights,\
+                                        "mse_train":for_plot_mse_train,\
+                                        "mse_test":for_plot_mse_test} 
+        self._print_formatted_mse(epoch,epochs,for_plot_mse_train[-1],for_plot_mse_test[-1] if test_present else None,with_test=test_present)
+        self.training_history = {"weights_history":for_plot_weights,\
+                                        "mse_train":for_plot_mse_train,\
+                                        "mse_test":for_plot_mse_test}
+        if verbose:
+            return self.training_history
+        else:
+            return None
 
 
     def plot_training_history(self,save_path=None):
