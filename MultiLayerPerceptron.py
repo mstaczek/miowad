@@ -24,8 +24,8 @@
 
 import numpy as np
 import math
-
-
+from itertools import chain
+from matplotlib import pyplot as plt
 
 class Layer:
                 
@@ -126,13 +126,16 @@ class NeuralNetwork:
             self.set_weights_randomized(after_layer = len(self.layers)-1)
 
     def _randomize_weights(self,size_input,size_output):
+        size = (size_input,size_output)
         if self._weights_randomizer == "uniform":
-            return np.random.uniform(size=(size_input,size_output))
+            return np.random.uniform(size=size)
+        elif self._weights_randomizer == "normal":
+            return np.random.normal(size=size)
         elif self._weights_randomizer == "xavier":
             limit = math.sqrt(6 / (size_input + size_output))
-            return np.random.uniform(low=-limit,high=limit,size=(size_input,size_output))
+            return np.random.uniform(low=-limit,high=limit,size=size)
         elif self._weights_randomizer == "he":
-            return np.random.normal(loc=0,scale=np.sqrt(2/size_input),size=(size_input,size_output))
+            return np.random.normal(loc=0,scale=np.sqrt(2/size_input),size=size)
         else:
             raise Exception(f"Unknown weights randomizer: {self._weights_randomizer}")
             
@@ -183,66 +186,115 @@ class NeuralNetwork:
         elif isinstance(input_raw[0],float) or isinstance(input_raw[0],int):
             return self._predict_single(input_raw)
 
+    def _backprop_calculate_errors(self,expected_output):
+        last_layer = self.layers[-1]
+        last_layer.neurons_error_vals = \
+                (last_layer.neurons_vals - expected_output) * last_layer.neurons_grad_vals
+        for j in range(len(self.weights)-1,0,-1): # over all layers, updating errors except last layer 
+            layer_in = self.layers[j]
+            layer_out = self.layers[j+1]
+            weights = self.weights[j]
+            f_prim = layer_in.neurons_grad_vals
+            errors_k_plus_one = layer_out.neurons_error_vals[-weights.shape[1]:]
+            weight_k_plus_one = weights
 
-    def train(self, input_raw, expected_output_raw, learning_rate = 0.1, epochs = 1, verbose = False):
-        input_array = np.array(input_raw)
-        expected_output_array = np.array(expected_output_raw)
-        if len(input_array) != len(expected_output_array):
-            raise Exception("Input and expected output must be of the same length")
-        N = len(input_array)
-        for epoch in range(epochs):
-            weights_grad = [np.zeros(weights_i.shape) for weights_i in self.weights]            
-            for i in range(N):
-                self._predict_single(input_array[i])
-                last_layer = self.layers[-1]
-                last_layer.neurons_error_vals = \
-                    (last_layer.neurons_vals - expected_output_array[i]) * last_layer.neurons_grad_vals
-                for j in range(len(self.weights)-1,0,-1): # over all layers, updating errors except last layer 
-                    layer_in = self.layers[j]
-                    layer_out = self.layers[j+1]
-                    weights = self.weights[j]
-                    f_prim = layer_in.neurons_grad_vals
-                    errors_k_plus_one = layer_out.neurons_error_vals[-weights.shape[1]:]
-                    weight_k_plus_one = weights
+            w_times_e = errors_k_plus_one @ weight_k_plus_one.T
+            errors_k = f_prim * w_times_e
 
-                    w_times_e = (weight_k_plus_one @ errors_k_plus_one.T).T
-                    errors_k = f_prim * w_times_e
+            layer_in.neurons_error_vals = errors_k
+            self.layers[j] = layer_in
+        
+    def _backprop_calculate_gradients(self,samples_count):
+        net_weights_grad_new = []
+        for j in range(len(self.layers)-1):
+            layer_in = self.layers[j]
+            layer_out = self.layers[j+1]
+            weights = self.weights[j]
+            err = layer_out.neurons_error_vals[-weights.shape[1]:]
+            l_in = layer_in.neurons_vals
+            l_in_rep_t = np.repeat(l_in[:,np.newaxis],len(err),axis=1)
+            net_weights_j_grad = l_in_rep_t * err
+            net_weights_grad_new.append(net_weights_j_grad/samples_count)
+        return net_weights_grad_new
 
-                    layer_in.neurons_error_vals = errors_k
-                    self.layers[j] = layer_in
-
-                # update weights after every example
-                # for j in range(len(self.layers)-1):
-                #     layer_in = self.layers[j]
-                #     layer_out = self.layers[j+1]
-                #     weights = self.weights[j]
-                #     err = layer_out.neurons_error_vals[-weights.shape[1]:]
-                #     l_in = layer_in.neurons_vals
-                #     l_in_rep_t = np.repeat(l_in[:,np.newaxis],len(err),axis=1)
-                #     net_weights_j_grad = l_in_rep_t * err
-                #     weights_grad[j] += net_weights_j_grad
-                # for j in range(len(self.layers)-1):
-                #     self.weights[j] -= learning_rate * weights_grad[j]
-
-                # update grad, but weights after all samples
-                for j in range(len(self.layers)-1):
-                    layer_in = self.layers[j]
-                    layer_out = self.layers[j+1]
-                    weights = self.weights[j]
-                    err = layer_out.neurons_error_vals[-weights.shape[1]:]
-                    l_in = layer_in.neurons_vals
-                    l_in_rep_t = np.repeat(l_in[:,np.newaxis],len(err),axis=1)
-                    net_weights_j_grad = l_in_rep_t * err
-                    weights_grad[j] += net_weights_j_grad
-
-            # update weights after all samples
-            for j in range(len(self.layers)-1):
-                self.weights[j] -= learning_rate * weights_grad[j] / N
-            if verbose:
-                print(f"Epoch {epoch}, Weights: {self.weights}")
-        if verbose:
-            return self.weights
+    def _backprop_update_weights(self,learning_rate,weights_grad):
+        for j in range(len(self.weights)):
+            self.weights[j] -= learning_rate * weights_grad[j]
+    
+    def _mse(self,real, pred):
+        if type(real[0]) == list:
+            real2 = list(chain.from_iterable(real))
         else:
-            return
+            real2 = real
+        if type(pred[0]) == list:
+            pred2 = list(chain.from_iterable(pred))
+        else:
+            pred2 = pred
+        return np.square(np.subtract(real2,pred2)).mean() 
+    
+    def _get_current_mse(self,samples_count,batch_size,train_in_raw,train_out_raw):
+        errors_train_iter = []
+        for batch_part_no in list(range(0,min(math.ceil(samples_count/batch_size),samples_count))):
+            batch_train_in = train_in_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
+            batch_train_out = train_out_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
+            y_hat = self.predict(batch_train_in)
+            errors_train_iter += [self._mse(batch_train_out,y_hat)]
+        return np.mean(errors_train_iter)
+
+    def train(self, train_in, train_out, test_in=None, test_out=None, learning_rate=0.01, epochs=1, batch_size=32, verbose=False, debug=False):
+        train_input_array = np.array(train_in)
+        train_output_array = np.array(train_out)
+        if len(train_input_array) != len(train_output_array):
+            raise Exception("Input and expected output must be of the same length")
+        N = len(train_input_array)
+        batch_size = min(batch_size,N) if batch_size > 0 else N
+        
+        for_plot_weights = []
+        for_plot_mse_train = []
+        for_plot_mse_test = []
+        if test_in is not None and test_out is not None:
+            N_test = len(test_in)
+            batch_size_test = min(batch_size,N) if batch_size > 0 else N
+
+        for epoch in range(epochs):
+## plots
+            for_plot_weights += [self.weights]
+            for_plot_mse_train += [self._get_current_mse(N,batch_size,train_in,train_out)]
+            if test_in is not None and test_out is not None:
+                for_plot_mse_test += [self._get_current_mse(N_test,batch_size_test,test_in,test_out)]
+## prints
+            if verbose:
+                print("Epoch:",epoch+1,"/",epochs,", MSE train:",for_plot_mse_train[-1],end="")
+                print(", MSE test:",for_plot_mse_test[-1]) if test_in is not None and test_out is not None else print()
+## backprop
+            for batch_part_no in list(range(0,min(math.ceil(N/batch_size),N))):
+                batch_train_input_array = train_input_array[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
+                batch_train_output_array = train_output_array[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
+                weights_grad = [np.zeros(weights_i.shape) for weights_i in self.weights]            
+                for i in range(len(batch_train_input_array)):
+                    self._predict_single(batch_train_input_array[i])
+                    self._backprop_calculate_errors(batch_train_output_array[i])
+                    weights_grad_new = self._backprop_calculate_gradients(samples_count=batch_size)
+                    weights_grad = [weights_grad[j] + weights_grad_new[j] for j in range(len(self.weights))]
+                    print(f"Epoch {epoch+1}, batch {i+1}, new weights gradients:\n{weights_grad_new}") if debug else None
+                self._backprop_update_weights(learning_rate,weights_grad)
+            print(f"End of Epoch {epoch+1}, Weights:\n {self.weights}\n") if debug else None
+
+        self.training_history = {"weights":for_plot_weights,"mse_train":for_plot_mse_train,"mse_test":for_plot_mse_test}
+        return {'mse_train':for_plot_mse_train,'mse_test':for_plot_mse_test,'weights_history':for_plot_weights}
 
 
+    def plot_training_history(self,save_path=None):
+        if self.training_history is None:
+            raise Exception("Training history is empty")
+        plt.figure()
+        plt.plot(self.training_history["mse_train"],label="MSE train")
+        plt.plot(self.training_history["mse_test"],label="MSE test")
+        plt.legend()
+        plt.xlabel("Epoch")
+        plt.ylabel("MSE")
+        plt.title("MSE changes in last training")
+        plt.grid()
+        if save_path is not None:
+            plt.savefig(save_path)
+        plt.show()
