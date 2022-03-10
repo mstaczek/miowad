@@ -25,6 +25,8 @@
 import numpy as np
 import math
 
+
+
 class Layer:
                 
     def _activation_function_linear(self,x):
@@ -233,7 +235,7 @@ class NeuralNetwork:
 
             # update weights after all samples
             for j in range(len(self.layers)-1):
-                self.weights[j] -= learning_rate * weights_grad[j]
+                self.weights[j] -= learning_rate * weights_grad[j] / N
             if verbose:
                 print(f"Epoch {epoch}, Weights: {self.weights}")
         if verbose:
