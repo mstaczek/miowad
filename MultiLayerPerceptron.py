@@ -301,15 +301,16 @@ class NeuralNetwork:
 
 
     def plot_training_history(self,save_path=None):
-        if self.training_history is None:
+        if len(self.training_history["mse_train"]) == 0:
             raise Exception("Training history is empty")
         plt.figure()
         plt.plot(self.training_history["mse_train"],label="MSE train")
-        plt.plot(self.training_history["mse_test"],label="MSE test")
+        if len(self.training_history["mse_test"]) > 0:
+            plt.plot(self.training_history["mse_test"],label="MSE test")
         plt.legend()
         plt.xlabel("Epoch")
         plt.ylabel("MSE")
-        plt.title("MSE changes in last training")
+        plt.title("MSE changes during training")
         plt.grid()
         if save_path is not None:
             plt.savefig(save_path)
