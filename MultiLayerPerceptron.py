@@ -307,6 +307,8 @@ class NeuralNetwork:
         else:
             return None
 
+    def get_training_history(self):
+        return self.training_history
 
     def plot_training_history(self,save_path=None):
         if len(self.training_history["mse_train"]) == 0:
