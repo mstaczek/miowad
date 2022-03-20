@@ -27,8 +27,11 @@ import math
 from itertools import chain
 from matplotlib import pyplot as plt
 
-class Layer:
-                
+class Activations:
+    def __init__(self, activation_fun_name):
+        self._set_activation_functions(activation_fun_name)
+        return (self.activation_function, self.activation_function_gradient)
+    
     def _activation_function_linear(self,x):
         return x
 
@@ -62,6 +65,27 @@ class Layer:
     def _activation_function_relu_grad(self,x):
         return 1 if x > 0 else 0
 
+    
+    def _set_activation_functions(self, activation_fun_name):
+        if activation_fun_name == "sigmoid":
+            chosen_function = self._activation_function_sigmoid
+            chosen_function_grad = self._activation_function_sigmoid_grad
+        elif activation_fun_name == "linear":
+            chosen_function = self._activation_function_linear
+            chosen_function_grad = self._activation_function_linear_grad
+        elif activation_fun_name == "tanh":
+            chosen_function = self._activation_function_tanh
+            chosen_function_grad = self._activation_function_tanh_grad
+        elif activation_fun_name == "relu":
+            chosen_function = self._activation_function_relu
+            chosen_function_grad = self._activation_function_relu_grad
+        else:
+            self.activation_function_name = None
+            raise Exception(f"Unknown activation function selected: {activation_fun_name}\nAvailable functions are: 'sigmoid', 'linear', 'tanh' and 'relu'.")
+        self.activation_function = np.vectorize(chosen_function)
+        self.activation_function_gradient = np.vectorize(chosen_function_grad)
+
+class Layer:
     def __init__(self,neurons_count=1,activation_fun="sigmoid",add_bias=True):
         self.add_bias = add_bias
         self.neurons_count = neurons_count
@@ -75,24 +99,9 @@ class Layer:
         self.set_activation_function(activation_fun)
 
     def set_activation_function(self,fun_name):
-        if fun_name == "sigmoid":
-            chosen_function = self._activation_function_sigmoid
-            chosen_function_grad = self._activation_function_sigmoid_grad
-        elif fun_name == "linear":
-            chosen_function = self._activation_function_linear
-            chosen_function_grad = self._activation_function_linear_grad
-        elif fun_name == "tanh":
-            chosen_function = self._activation_function_tanh
-            chosen_function_grad = self._activation_function_tanh_grad
-        elif fun_name == "relu":
-            chosen_function = self._activation_function_relu
-            chosen_function_grad = self._activation_function_relu_grad
-        else:
-            self.activation_function_name = None
-            raise Exception(f"Unknown activation function selected: {fun_name}\nAvailable functions are: 'sigmoid', 'linear', 'tanh' and 'relu'.")
         self.activation_function_name = fun_name + " function"
-        self.activation_fun = np.vectorize(chosen_function)
-        self.activation_fun_grad = np.vectorize(chosen_function_grad)
+        self.activation_fun = Activations(fun_name).activation_function
+        self.activation_fun_grad = Activations(fun_name).activation_function_gradient
 
     def __str__(self):
         txt = f"Layer has {self.neurons_count} neurons"
