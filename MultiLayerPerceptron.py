@@ -285,7 +285,7 @@ class NeuralNetwork:
                 self._backprop_update_weights(learning_rate,weights_grad)
 ## prints                
             print(f"End of Epoch {epoch+1}, Weights:\n {self.weights}\n") if debug else None
-            if epoch % max(10,math.ceil(epochs/1000)*100) == 0:
+            if epoch % math.ceil(epochs/10) == 0:
                 self._print_formatted_mse(epoch,epochs,for_plot_mse_train[-1],for_plot_mse_test[-1] if test_present else None,with_test=test_present)
                 self.training_history = {"weights_history":for_plot_weights,\
                                         "mse_train":for_plot_mse_train,\
