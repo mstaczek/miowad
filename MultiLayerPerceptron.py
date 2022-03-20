@@ -26,6 +26,7 @@ import numpy as np
 import math
 from itertools import chain
 from matplotlib import pyplot as plt
+import copy
 
 class Activations:
     def __init__(self, activation_fun_name):
@@ -273,7 +274,7 @@ class NeuralNetwork:
 
         for epoch in range(epochs):
 ## plots
-            for_plot_weights += [self.weights]
+            for_plot_weights += [copy.deepcopy(self.weights)]
             for_plot_mse_train += [self._get_current_mse(N,batch_size,train_in,train_out)]
             if test_present:
                 for_plot_mse_test += [self._get_current_mse(N_test,batch_size_test,test_in,test_out)]
