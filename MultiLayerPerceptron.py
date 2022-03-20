@@ -30,7 +30,6 @@ from matplotlib import pyplot as plt
 class Activations:
     def __init__(self, activation_fun_name):
         self._set_activation_functions(activation_fun_name)
-        return (self.activation_function, self.activation_function_gradient)
     
     def _activation_function_linear(self,x):
         return x
