@@ -257,7 +257,8 @@ class NeuralNetwork:
             result += f",   MSE test:{round(mse_test,3):>9}"
         print(result)    
 
-    def train(self, train_in, train_out, test_in=None, test_out=None, learning_rate=0.01, epochs=1, batch_size=32, verbose=False, debug=False):
+    def train(self, train_in, train_out, test_in=None, test_out=None, learning_rate=0.01, epochs=1, \
+                batch_size=32, with_moment=False,moment_decay=0.5,verbose=False, debug=False):
         train_input_array = np.array(train_in)
         train_output_array = np.array(train_out)
         if len(train_input_array) != len(train_output_array):
@@ -271,7 +272,9 @@ class NeuralNetwork:
         if test_present:= (test_in is not None and test_out is not None):
             N_test = len(test_in)
             batch_size_test = min(batch_size,N_test)
-
+## backprop
+        if with_moment:
+            moment_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]            
         for epoch in range(epochs):
 ## plots
             for_plot_weights += [copy.deepcopy(self.weights)]
@@ -291,7 +294,11 @@ class NeuralNetwork:
                     self._backprop_calculate_errors(batch_train_output_array[i])
                     weights_grad_new = self._backprop_calculate_gradients(samples_count=len(batch_train_input_array))
                     weights_grad = [weights_grad[j] + weights_grad_new[j] for j in range(len(self.weights))]
-                self._backprop_update_weights(learning_rate,weights_grad)
+                if with_moment:
+                    moment_weights = [moment_weights[j] * moment_decay + weights_grad[j] for j in range(len(self.weights))]
+                    self._backprop_update_weights(learning_rate,moment_weights)
+                else:
+                    self._backprop_update_weights(learning_rate,weights_grad)
 ## prints                
             print(f"End of Epoch {epoch+1}, Weights:\n {self.weights}\n") if debug else None
             if epoch % math.ceil(epochs/10) == 0:
