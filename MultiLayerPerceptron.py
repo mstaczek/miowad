@@ -258,7 +258,8 @@ class NeuralNetwork:
         print(result)    
 
     def train(self, train_in, train_out, test_in=None, test_out=None, learning_rate=0.01, epochs=1, \
-                batch_size=32, with_moment=False,moment_decay=0.5,verbose=False, debug=False):
+                batch_size=32, with_moment=False,moment_decay=0.9,with_rms_prop=False,\
+                rms_prop_decay=0.5,verbose=False, debug=False):
         train_input_array = np.array(train_in)
         train_output_array = np.array(train_out)
         if len(train_input_array) != len(train_output_array):
@@ -274,7 +275,9 @@ class NeuralNetwork:
             batch_size_test = min(batch_size,N_test)
 ## backprop
         if with_moment:
-            moment_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]            
+            moment_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]
+        if with_rms_prop:
+            rms_prop_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]            
         for epoch in range(epochs):
 ## plots
             for_plot_weights += [copy.deepcopy(self.weights)]
@@ -297,6 +300,10 @@ class NeuralNetwork:
                 if with_moment:
                     moment_weights = [moment_weights[j] * moment_decay + weights_grad[j] for j in range(len(self.weights))]
                     self._backprop_update_weights(learning_rate,moment_weights)
+                elif with_rms_prop:
+                    rms_prop_weights = [rms_prop_decay * rms_prop_weights[j] + (1 - rms_prop_decay) * weights_grad[j]**2 for j in range(len(self.weights))]
+                    weights_grad = [weights_grad[j]/rms_prop_weights[j]**0.5 for j in range(len(self.weights))]
+                    self._backprop_update_weights(learning_rate,weights_grad)
                 else:
                     self._backprop_update_weights(learning_rate,weights_grad)
 ## prints                
