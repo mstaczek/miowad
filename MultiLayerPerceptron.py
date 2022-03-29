@@ -4,7 +4,7 @@
 # # net = NeuralNetwork(weights_random = True)
 #
 # - add layers (default layer: 1 neuron, 1 bias neuron, sigmoid activation function)
-# # net.add(Layer(neurons_count=5,activation_fun="linear",add_bias=True))
+# # net.add(Layer(neurons_count=5,activation_fun=ActivationSigmoid(),add_bias=True))
 #
 # - print neural network architecture
 # # print(net)
@@ -12,10 +12,6 @@
 # - set all weights to given as parameter
 # # net.set_weights(weights)
 # weights are a list of np.arrays same as in 'print(net)'
-#
-# - set random weights for a given layer
-# # net.set_weights_randomized(after_layer=3)
-# if after_layer=None then all layers will be randomized
 #
 # - predict (feed forward)
 # # net.predict(x)
@@ -28,65 +24,53 @@ from itertools import chain
 from matplotlib import pyplot as plt
 import copy
 
-class Activations:
-    def __init__(self, activation_fun_name):
-        self._set_activation_functions(activation_fun_name)
-    
-    def _activation_function_linear(self,x):
+
+class ActivationLinear:
+    def __init__(self):
+        pass
+    def __str__(self):
+        return "linear"
+    def forw(self,x):
         return x
+    def grad(self,x):
+        result = np.empty(x.shape[0])
+        result.fill(1)
+        return result
 
-    def _activation_function_sigmoid(self,x):
-        if x >= 0:
-            z = math.exp(-x)
-            return 1 / (1 + z)
-        else:
-            z = math.exp(x)
-            return z / (1 + z)
+class ActivationSigmoid:
+    def __init__(self):
+        pass
+    def __str__(self):
+        return "sigmoid"
+    def forw(self,x):
+        return 1 / (1 + np.exp(-x))
+    def grad(self,x):
+        forw = self.forw(x)
+        return forw * (1 - forw)
 
-    def _activation_function_tanh(self,x):
-        e2x = np.exp(2*x)
-        t = (e2x-1) / (1 + e2x)
-        return t
+class ActivationTanh:
+    def __init__(self):
+        pass
+    def __str__(self):
+        return "tanh"
+    def forw(self,x):
+        return np.tanh(x)
+    def grad(self,x):
+        return 1 - np.tanh(x)**2
 
-    def _activation_function_relu(self,x):
+class ActivationReLU:
+    def __init__(self):
+        pass
+    def __str__(self):
+        return "relu"
+    def forw(self,x):
         return x if x > 0 else 0
+    def grad(self,x):
+        return 1 if x > 0 else 0     
 
-    def _activation_function_linear_grad(self,x):
-        return 1
-
-    def _activation_function_sigmoid_grad(self,x):
-        sigmoid_val = self._activation_function_sigmoid(x)
-        return sigmoid_val * (1 - sigmoid_val)
-
-    def _activation_function_tanh_grad(self,x):
-        tanh_val = self._activation_function_tanh(x)
-        return 1 - tanh_val**2
-
-    def _activation_function_relu_grad(self,x):
-        return 1 if x > 0 else 0
-
-    
-    def _set_activation_functions(self, activation_fun_name):
-        if activation_fun_name == "sigmoid":
-            chosen_function = self._activation_function_sigmoid
-            chosen_function_grad = self._activation_function_sigmoid_grad
-        elif activation_fun_name == "linear":
-            chosen_function = self._activation_function_linear
-            chosen_function_grad = self._activation_function_linear_grad
-        elif activation_fun_name == "tanh":
-            chosen_function = self._activation_function_tanh
-            chosen_function_grad = self._activation_function_tanh_grad
-        elif activation_fun_name == "relu":
-            chosen_function = self._activation_function_relu
-            chosen_function_grad = self._activation_function_relu_grad
-        else:
-            self.activation_function_name = None
-            raise Exception(f"Unknown activation function selected: {activation_fun_name}\nAvailable functions are: 'sigmoid', 'linear', 'tanh' and 'relu'.")
-        self.activation_function = np.vectorize(chosen_function)
-        self.activation_function_gradient = np.vectorize(chosen_function_grad)
 
 class Layer:
-    def __init__(self,neurons_count=1,activation_fun="sigmoid",add_bias=True):
+    def __init__(self,neurons_count,activation_fun=ActivationLinear(),add_bias=True):
         self.add_bias = add_bias
         self.neurons_count = neurons_count
         self.neurons_vals = np.zeros(self.neurons_count)
@@ -96,22 +80,20 @@ class Layer:
 
         self.neurons_grad_vals = np.zeros(self.neurons_count)
         self.neurons_error_vals = np.zeros(self.neurons_count)
-        self.set_activation_function(activation_fun)
+        self.activation_fun = activation_fun
 
-    def set_activation_function(self,fun_name):
-        self.activation_function_name = fun_name + " function"
-        self.activation_fun = Activations(fun_name).activation_function
-        self.activation_fun_grad = Activations(fun_name).activation_function_gradient
+    def make_first_layer(self):
+        self.activation_fun = ActivationLinear()
 
     def __str__(self):
         txt = f"Layer has {self.neurons_count} neurons"
         txt += " (including 1 bias neuron)" if self.add_bias else " (with no bias neuron)"
-        txt += f" and activation function is '{self.activation_function_name}'"
+        txt += f" and activation function is '{str(self.activation_fun)}'" 
         return txt
         
 
 class NeuralNetwork:
-    def __init__(self, weights_random = True, weights_randomizer = "uniform"):
+    def __init__(self, weights_random = True, weights_randomizer = "xavier"):
         self.layers = []
         self.neuron_values = []
         self.weights = []
@@ -122,15 +104,19 @@ class NeuralNetwork:
     def __str__(self):
         txt = "Neural network layers:\n" 
         for i in range(len(self.layers)):
-            txt += f"\tLayer {i+1}: {str(self.layers[i])}\n"
+            txt += f"\tLayer {i}: {str(self.layers[i])}\n"
         txt += "Neural network weights:\n" 
         for i in range(len(self.weights)):
-            txt += f"\tWeights {i+1}: {self.weights[i].shape} (input, output)\n{str(self.weights[i])}\n"
+            txt += f"\tWeights {i+1}: shape is {self.weights[i].shape} as (input, output) "
+            if self.layers[i].add_bias:
+                txt += f"where first element in each column is bias" 
+            txt += f"\n{str(self.weights[i])}\n"
         return txt
 
     def add(self,new_layer:Layer): # one by one
         if len(self.layers) == 0:
-            new_layer.set_activation_function('linear') # no activation for input layer
+            # new_layer.set_activation_function('linear') # no activation for input layer
+            new_layer.make_first_layer() # no activation for input layer
         self.layers.append(new_layer)
         if self._weights_random and len(self.layers) > 1:
             self.set_weights_randomized(after_layer = len(self.layers)-1)
@@ -167,6 +153,7 @@ class NeuralNetwork:
         ### format: a list of matrices
         # Each matrix has 'size_input' rows and 'size_output' columns, for example:
         # np.random.randn(size_input,size_output)
+        # Note: first value in each column is bias (if present)
         self.weights = weights
 
     def _predict_single(self,input_raw):
@@ -177,8 +164,8 @@ class NeuralNetwork:
             layer_out = self.layers[i+1]
             weights = self.weights[i]
             multiplied = layer_in.neurons_vals @ weights
-            layer_out.neurons_vals[-multiplied.shape[0]:] = layer_out.activation_fun(multiplied)
-            layer_out.neurons_grad_vals[-multiplied.shape[0]:] = layer_out.activation_fun_grad(multiplied)
+            layer_out.neurons_vals[-multiplied.shape[0]:] = layer_out.activation_fun.forw(multiplied)
+            layer_out.neurons_grad_vals[-multiplied.shape[0]:] = layer_out.activation_fun.grad(multiplied)
             self.layers[i+1] = layer_out
 
         last_layer = self.layers[-1]
