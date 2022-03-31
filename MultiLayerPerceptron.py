@@ -43,7 +43,15 @@ class ActivationSigmoid:
     def __str__(self):
         return "sigmoid"
     def forw(self,x):
-        return 1 / (1 + np.exp(-x))
+        def _forw(x): # more numerically stable
+            if x >= 0:
+                z = math.exp(-x)
+                return 1 / (1 + z)
+            else:
+                z = math.exp(x)
+                return z / (1 + z)
+        return np.vectorize(_forw)(x)
+
     def grad(self,x):
         forw = self.forw(x)
         return forw * (1 - forw)
@@ -74,7 +82,8 @@ class ActivationSoftmax:
     def __str__(self):
         return "softmax"
     def forw(self,x):
-        return np.exp(x) / np.sum(np.exp(x))
+        exps = np.exp(x - np.max(x))
+        return exps / np.sum(exps)
     def grad(self,x):
         return None # not used - softmax is implemented to be used only with crossentropy loss in last layer
 
@@ -99,6 +108,40 @@ class Layer:
         txt += " (including 1 bias neuron)" if self.add_bias else " (with no bias neuron)"
         txt += f" and activation function is '{str(self.activation_fun)}'" 
         return txt
+
+class LossMSE:
+    def __init__(self):
+        pass
+    def __str__(self):
+        return "MSE"
+    def loss(self,real, pred):      
+        if type(real[0]) == list:
+            real2 = list(chain.from_iterable(real))
+        else:
+            real2 = real
+        if type(pred[0]) == list:
+            pred2 = list(chain.from_iterable(pred))
+        else:
+            pred2 = pred
+        return np.square(np.subtract(real2,pred2)).mean() 
+    def get_errors_for_last_layer(self, y_pred, y_real, grads_last_layer):
+        return (y_pred - y_real) * grads_last_layer
+
+
+class LossCrossEntropy:
+    def __init__(self):
+        pass
+    def __str__(self):
+        return "CrossEntropy"
+    def loss(self,y_pred,y_true):
+        epsilon = 1e-12
+        predictions = np.clip(np.array(y_pred), epsilon, 1. - epsilon)
+        targets = np.array(y_true)
+        N = predictions.shape[0]
+        ce = -np.sum(targets*np.log(predictions))/N
+        return ce
+    def get_errors_for_last_layer(self, y_pred, y_real, grads_last_layer):
+        return y_pred - y_real
         
 
 class NeuralNetwork:
@@ -108,7 +151,7 @@ class NeuralNetwork:
         self.weights = []
         self._weights_random = weights_random
         self._weights_randomizer = weights_randomizer
-        self.training_history = {"weights_history":[],"mse_train":[],"mse_test":[]}
+        self.training_history = {"weights_history":[],"loss_train":[],"loss_test":[]}
     
     def __str__(self):
         txt = "Neural network layers:\n" 
@@ -191,10 +234,11 @@ class NeuralNetwork:
         elif isinstance(input_raw[0],float) or isinstance(input_raw[0],int):
             return self._predict_single(input_raw)
 
-    def _backprop_calculate_errors(self,expected_output):
+    def _backprop_calculate_errors(self,expected_output, loss_function):
         last_layer = self.layers[-1]
-        last_layer.neurons_error_vals = \
-                (last_layer.neurons_vals - expected_output) * last_layer.neurons_grad_vals
+        last_layer.neurons_error_vals = loss_function.get_errors_for_last_layer(y_pred = last_layer.neurons_vals,\
+                                                                                y_real = expected_output,\
+                                                                                grads_last_layer = last_layer.neurons_grad_vals) # for mse
         for j in range(len(self.weights)-1,0,-1): # over all layers, updating errors except last layer 
             layer_in = self.layers[j]
             layer_out = self.layers[j+1]
@@ -226,33 +270,22 @@ class NeuralNetwork:
         for j in range(len(self.weights)):
             self.weights[j] -= learning_rate * weights_grad[j]
     
-    def _mse(self,real, pred):
-        if type(real[0]) == list:
-            real2 = list(chain.from_iterable(real))
-        else:
-            real2 = real
-        if type(pred[0]) == list:
-            pred2 = list(chain.from_iterable(pred))
-        else:
-            pred2 = pred
-        return np.square(np.subtract(real2,pred2)).mean() 
-    
-    def _get_current_mse(self,samples_count,batch_size,in_raw,out_raw):
+    def _get_current_loss(self,samples_count,batch_size,in_raw,out_raw, loss_function):
         errors_iter = []
         for batch_part_no in list(range(0,min(math.ceil(samples_count/batch_size),samples_count))):
             batch_in = in_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
             batch_out = out_raw[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
             y_hat = self.predict(batch_in)
-            errors_iter += [self._mse(batch_out,y_hat)]
+            errors_iter += [loss_function.loss(batch_out,y_hat)]
         return np.mean(errors_iter)
     
-    def _print_formatted_mse(self,epoch,epochs,mse_train,mse_test=None,with_test=False):
-        result = f"Epoch:{epoch+1:>5}/{epochs},   MSE train:{round(mse_train,3):>9}"
+    def _print_formatted_loss(self,epoch,epochs,loss_train,loss_test=None,with_test=False, loss_function=None):
+        result = f"Epoch:{epoch+1:>5}/{epochs},  {str(loss_function)} loss train:{round(loss_train,3):>9}"
         if with_test:
-            result += f",   MSE test:{round(mse_test,3):>9}"
+            result += f",  loss test:{round(loss_test,3):>9}"
         print(result)    
 
-    def train(self, train_in, train_out, test_in=None, test_out=None, learning_rate=0.01, epochs=1, \
+    def train(self, train_in, train_out, test_in=None, test_out=None, loss_function=LossMSE(),learning_rate=0.01, epochs=1, \
                 batch_size=32, with_moment=False,moment_decay=0.9,with_rms_prop=False,\
                 rms_prop_decay=0.5,verbose=False, debug=False):
         train_input_array = np.array(train_in)
@@ -263,8 +296,8 @@ class NeuralNetwork:
         batch_size = min(batch_size,N) if batch_size > 0 else N
 ## plots  
         for_plot_weights = self.training_history["weights_history"]
-        for_plot_mse_train = self.training_history["mse_train"]
-        for_plot_mse_test = self.training_history["mse_test"]
+        for_plot_loss_train = self.training_history["loss_train"]
+        for_plot_loss_test = self.training_history["loss_test"]
         if test_present:= (test_in is not None and test_out is not None):
             N_test = len(test_in)
             batch_size_test = min(batch_size,N_test)
@@ -276,12 +309,13 @@ class NeuralNetwork:
         for epoch in range(epochs):
 ## plots
             for_plot_weights += [copy.deepcopy(self.weights)]
-            for_plot_mse_train += [self._get_current_mse(N,batch_size,train_in,train_out)]
+            for_plot_loss_train += [self._get_current_loss(N,batch_size,train_in,train_out,loss_function)]
             if test_present:
-                for_plot_mse_test += [self._get_current_mse(N_test,batch_size_test,test_in,test_out)]
+                for_plot_loss_test += [self._get_current_loss(N_test,batch_size_test,test_in,test_out,loss_function)]
 ## prints
             if verbose:
-                self._print_formatted_mse(epoch,epochs,for_plot_mse_train[-1],for_plot_mse_test[-1] if test_present else None,with_test=test_present)
+                self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present\
+                                            ,loss_function=loss_function)
 ## backprop
             for batch_part_no in list(range(0,min(math.ceil(N/batch_size),N))):
                 batch_train_input_array = train_input_array[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
@@ -289,7 +323,7 @@ class NeuralNetwork:
                 weights_grad = [np.zeros(weights_i.shape) for weights_i in self.weights]            
                 for i in range(len(batch_train_input_array)):
                     self._predict_single(batch_train_input_array[i])
-                    self._backprop_calculate_errors(batch_train_output_array[i])
+                    self._backprop_calculate_errors(batch_train_output_array[i], loss_function)
                     weights_grad_new = self._backprop_calculate_gradients(samples_count=len(batch_train_input_array))
                     weights_grad = [weights_grad[j] + weights_grad_new[j] for j in range(len(self.weights))]
                 if with_moment:
@@ -304,14 +338,16 @@ class NeuralNetwork:
 ## prints                
             print(f"End of Epoch {epoch+1}, Weights:\n {self.weights}\n") if debug else None
             if epoch % math.ceil(epochs/10) == 0:
-                self._print_formatted_mse(epoch,epochs,for_plot_mse_train[-1],for_plot_mse_test[-1] if test_present else None,with_test=test_present)
+                self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present,
+                                            loss_function=loss_function)
                 self.training_history = {"weights_history":for_plot_weights,\
-                                        "mse_train":for_plot_mse_train,\
-                                        "mse_test":for_plot_mse_test} 
-        self._print_formatted_mse(epoch,epochs,for_plot_mse_train[-1],for_plot_mse_test[-1] if test_present else None,with_test=test_present)
+                                        "loss_train":for_plot_loss_train,\
+                                        "loss_test":for_plot_loss_test} 
+        self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present\
+                                    ,loss_function=loss_function)
         self.training_history = {"weights_history":for_plot_weights,\
-                                        "mse_train":for_plot_mse_train,\
-                                        "mse_test":for_plot_mse_test}
+                                        "loss_train":for_plot_loss_train,\
+                                        "loss_test":for_plot_loss_test}
         if verbose:
             return self.training_history
         else:
@@ -321,16 +357,16 @@ class NeuralNetwork:
         return self.training_history
 
     def plot_training_history(self,save_path=None):
-        if len(self.training_history["mse_train"]) == 0:
+        if len(self.training_history["loss_train"]) == 0:
             raise Exception("Training history is empty")
         plt.figure()
-        plt.plot(self.training_history["mse_train"],label="MSE train")
-        if len(self.training_history["mse_test"]) > 0:
-            plt.plot(self.training_history["mse_test"],label="MSE test")
+        plt.plot(self.training_history["loss_train"],label="Loss train")
+        if len(self.training_history["loss_test"]) > 0:
+            plt.plot(self.training_history["loss_test"],label="Loss test")
         plt.legend()
         plt.xlabel("Epoch")
-        plt.ylabel("MSE")
-        plt.title("MSE changes during training")
+        plt.ylabel("Loss")
+        plt.title("Loss changes during training")
         plt.grid()
         if save_path is not None:
             plt.savefig(save_path)
