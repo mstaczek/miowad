@@ -151,7 +151,8 @@ class NeuralNetwork:
         self.weights = []
         self._weights_random = weights_random
         self._weights_randomizer = weights_randomizer
-        self.training_history = {"weights_history":[],"loss_train":[],"loss_test":[]}
+        self.training_history = {"weights_history":[],"loss_train":[],"loss_test":[],\
+                                "f1_macro_train":[],"f1_macro_test":[]}
     
     def __str__(self):
         txt = "Neural network layers:\n" 
@@ -285,9 +286,35 @@ class NeuralNetwork:
             result += f",  loss test:{round(loss_test,3):>9}"
         print(result)    
 
+    def _f1_per_class(self, y_true, y_pred):
+        TP = np.sum(np.multiply([i==True for i in y_pred], y_true))
+        TN = np.sum(np.multiply([i==False for i in y_pred], [not(j) for j in y_true]))
+        FP = np.sum(np.multiply([i==True for i in y_pred], [not(j) for j in y_true]))
+        FN = np.sum(np.multiply([i==False for i in y_pred], y_true))
+        precision = TP/(TP+FP)
+        recall = TP/(TP+FN)
+        return (2 * precision * recall) / (precision + recall) if precision != 0 and recall != 0 else 0
+
+    def _get_f1_macro(self,in_raw,out_raw):
+        y_true = np.array(out_raw).argmax(axis=1)
+        y_pred = np.argmax(self.predict(in_raw), axis=1)
+        macro = []
+        for i in np.unique(y_true):
+            modified_true = [i==j for j in y_true]
+            modified_pred = [i==j for j in y_pred]
+            score = self._f1_per_class(modified_true, modified_pred)
+            macro.append(score)
+        return np.mean(macro)
+
+    def _print_formatted_f1_macro(self,f1_train,f1_test=None):
+        result = f"\t\tF1 macro train:{round(f1_train,3):>9}"
+        if f1_test is not None:
+            result += f",  F1 macro test:{round(f1_test,3):>9}"
+        print(result)
+
     def train(self, train_in, train_out, test_in=None, test_out=None, loss_function=LossMSE(),learning_rate=0.01, epochs=1, \
                 batch_size=32, with_moment=False,moment_decay=0.9,with_rms_prop=False,\
-                rms_prop_decay=0.5,verbose=False, debug=False):
+                rms_prop_decay=0.5,with_f1_macro=False,verbose=False, debug=False):
         train_input_array = np.array(train_in)
         train_output_array = np.array(train_out)
         if len(train_input_array) != len(train_output_array):
@@ -298,6 +325,8 @@ class NeuralNetwork:
         for_plot_weights = self.training_history["weights_history"]
         for_plot_loss_train = self.training_history["loss_train"]
         for_plot_loss_test = self.training_history["loss_test"]
+        for_plot_f1_macro_train = self.training_history["f1_macro_train"]
+        for_plot_f1_macro_test = self.training_history["f1_macro_test"]
         if test_present:= (test_in is not None and test_out is not None):
             N_test = len(test_in)
             batch_size_test = min(batch_size,N_test)
@@ -310,8 +339,12 @@ class NeuralNetwork:
 ## plots
             for_plot_weights += [copy.deepcopy(self.weights)]
             for_plot_loss_train += [self._get_current_loss(N,batch_size,train_in,train_out,loss_function)]
+            if with_f1_macro:
+                for_plot_f1_macro_train += [self._get_f1_macro(train_in,train_out)]
             if test_present:
                 for_plot_loss_test += [self._get_current_loss(N_test,batch_size_test,test_in,test_out,loss_function)]
+                if with_f1_macro:
+                    for_plot_f1_macro_test += [self._get_f1_macro(test_in,test_out)]
 ## prints
             if verbose:
                 self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present\
@@ -340,14 +373,22 @@ class NeuralNetwork:
             if epoch % math.ceil(epochs/10) == 0:
                 self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present,
                                             loss_function=loss_function)
+                if with_f1_macro:
+                    self._print_formatted_f1_macro(for_plot_f1_macro_train[-1],for_plot_f1_macro_test[-1] if test_present else None)
                 self.training_history = {"weights_history":for_plot_weights,\
                                         "loss_train":for_plot_loss_train,\
-                                        "loss_test":for_plot_loss_test} 
+                                        "loss_test":for_plot_loss_test,\
+                                        "f1_macro_train":for_plot_f1_macro_train,\
+                                        "f1_macro_test":for_plot_f1_macro_test}                                        
         self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present\
                                     ,loss_function=loss_function)
+        if with_f1_macro:
+            self._print_formatted_f1_macro(for_plot_f1_macro_train[-1],for_plot_f1_macro_test[-1] if test_present else None)    
         self.training_history = {"weights_history":for_plot_weights,\
-                                        "loss_train":for_plot_loss_train,\
-                                        "loss_test":for_plot_loss_test}
+                                "loss_train":for_plot_loss_train,\
+                                "loss_test":for_plot_loss_test,\
+                                "f1_macro_train":for_plot_f1_macro_train,\
+                                "f1_macro_test":for_plot_f1_macro_test}  
         if verbose:
             return self.training_history
         else:
@@ -356,7 +397,7 @@ class NeuralNetwork:
     def get_training_history(self):
         return self.training_history
 
-    def plot_training_history(self,save_path=None):
+    def plot_training_history(self):
         if len(self.training_history["loss_train"]) == 0:
             raise Exception("Training history is empty")
         plt.figure()
@@ -368,6 +409,16 @@ class NeuralNetwork:
         plt.ylabel("Loss")
         plt.title("Loss changes during training")
         plt.grid()
-        if save_path is not None:
-            plt.savefig(save_path)
         plt.show()
+
+        if len(self.training_history["f1_macro_train"]) > 0:
+            plt.figure()
+            plt.plot(self.training_history["f1_macro_train"],label="f1 macro train")
+            if len(self.training_history["f1_macro_test"]) > 0:
+                plt.plot(self.training_history["f1_macro_test"],label="f1 macro test")
+            plt.legend()
+            plt.xlabel("Epoch")
+            plt.ylabel("F1 macro")
+            plt.title("F1 macro changes during training")
+            plt.grid()
+            plt.show()
