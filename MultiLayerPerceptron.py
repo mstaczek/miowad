@@ -68,6 +68,15 @@ class ActivationReLU:
     def grad(self,x):
         return 1 if x > 0 else 0     
 
+class ActivationSoftmax:
+    def __init__(self):
+        pass
+    def __str__(self):
+        return "softmax"
+    def forw(self,x):
+        return np.exp(x) / np.sum(np.exp(x))
+    def grad(self,x):
+        return None # not used - softmax is implemented to be used only with crossentropy loss in last layer
 
 class Layer:
     def __init__(self,neurons_count,activation_fun=ActivationLinear(),add_bias=True):
@@ -115,7 +124,6 @@ class NeuralNetwork:
 
     def add(self,new_layer:Layer): # one by one
         if len(self.layers) == 0:
-            # new_layer.set_activation_function('linear') # no activation for input layer
             new_layer.make_first_layer() # no activation for input layer
         self.layers.append(new_layer)
         if self._weights_random and len(self.layers) > 1:
