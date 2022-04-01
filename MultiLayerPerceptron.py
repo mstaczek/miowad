@@ -393,27 +393,29 @@ class NeuralNetwork:
         return self.training_history
 
     def plot_training_history(self):
-        if len(self.training_history["loss_train"]) == 0:
-            raise Exception("Training history is empty")
-        plt.figure()
-        plt.plot(self.training_history["loss_train"],label="Loss train")
+        if len(self.training_history["f1_macro_train"]) > 0:
+            fig, ax = plt.subplots(1, 2,figsize=(12, 4))
+        else:
+            fig, ax = plt.subplots(1, 1,figsize=(6, 4))
+            ax = [ax]
+
+        ax[0].plot(self.training_history["loss_train"],label="Loss train")
         if len(self.training_history["loss_test"]) > 0:
-            plt.plot(self.training_history["loss_test"],label="Loss test")
-        plt.legend()
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.title("Loss changes during training")
-        plt.grid()
-        plt.show()
+            ax[0].plot(self.training_history["loss_test"],label="Loss test")
+        ax[0].legend()
+        ax[0].set_xlabel("Epoch")
+        ax[0].set_ylabel("Loss")
+        ax[0].set_title("Loss changes during training")
+        ax[0].grid()
 
         if len(self.training_history["f1_macro_train"]) > 0:
-            plt.figure()
-            plt.plot(self.training_history["f1_macro_train"],label="f1 macro train")
+            ax[1].plot(self.training_history["f1_macro_train"],label="f1 macro train")
             if len(self.training_history["f1_macro_test"]) > 0:
-                plt.plot(self.training_history["f1_macro_test"],label="f1 macro test")
-            plt.legend()
-            plt.xlabel("Epoch")
-            plt.ylabel("F1 macro")
-            plt.title("F1 macro changes during training")
-            plt.grid()
-            plt.show()
+                ax[1].plot(self.training_history["f1_macro_test"],label="f1 macro test")
+            ax[1].legend()
+            ax[1].set_xlabel("Epoch")
+            ax[1].set_ylabel("F1 macro")
+            ax[1].set_title("F1 macro changes during training")
+            ax[1].grid()
+
+        plt.show()
