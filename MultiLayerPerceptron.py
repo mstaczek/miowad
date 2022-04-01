@@ -311,14 +311,23 @@ class NeuralNetwork:
         if f1_test is not None:
             result += f",  F1 macro test:{round(f1_test,3):>9}"
         print(result)
+    
+    def _update_training_history(self,weights,loss_train,loss_test,f1_train,f1_test):
+        self.training_history = {"weights_history":weights,"loss_train":loss_train,"loss_test":loss_test,\
+                                "f1_macro_train":f1_train,"f1_macro_test":f1_test}  
 
+    def _after_epoch_prints_and_data_saving(self,epoch,epochs,weights,loss_train,loss_test,f1_train,f1_test,loss_function):
+        self._print_formatted_loss(epoch,epochs,loss_train[-1],loss_test[-1] if len(loss_test)>0 else None,with_test=len(loss_test)>0,
+                                            loss_function=loss_function)
+        if len(f1_train)>0:
+            self._print_formatted_f1_macro(f1_train[-1],f1_test[-1] if len(f1_test)>0 else None)
+        self._update_training_history(weights,loss_train,loss_test,f1_train,f1_test)
+                                
     def train(self, train_in, train_out, test_in=None, test_out=None, loss_function=LossMSE(),learning_rate=0.01, epochs=1, \
                 batch_size=32, with_moment=False,moment_decay=0.9,with_rms_prop=False,\
-                rms_prop_decay=0.5,with_f1_macro=False,verbose=False, debug=False):
+                rms_prop_decay=0.5,with_f1_macro=False):
         train_input_array = np.array(train_in)
         train_output_array = np.array(train_out)
-        if len(train_input_array) != len(train_output_array):
-            raise Exception("Input and expected output must be of the same length")
         N = len(train_input_array)
         batch_size = min(batch_size,N) if batch_size > 0 else N
 ## plots  
@@ -330,26 +339,21 @@ class NeuralNetwork:
         if test_present:= (test_in is not None and test_out is not None):
             N_test = len(test_in)
             batch_size_test = min(batch_size,N_test)
+## plots update
+        for_plot_weights += [copy.deepcopy(self.weights)]
+        for_plot_loss_train += [self._get_current_loss(N,batch_size,train_in,train_out,loss_function)]
+        if with_f1_macro:
+            for_plot_f1_macro_train += [self._get_f1_macro(train_in,train_out)]
+        if test_present:
+            for_plot_loss_test += [self._get_current_loss(N_test,batch_size_test,test_in,test_out,loss_function)]
+            if with_f1_macro:
+                for_plot_f1_macro_test += [self._get_f1_macro(test_in,test_out)]
 ## backprop
         if with_moment:
             moment_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]
         if with_rms_prop:
             rms_prop_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]            
         for epoch in range(epochs):
-## plots
-            for_plot_weights += [copy.deepcopy(self.weights)]
-            for_plot_loss_train += [self._get_current_loss(N,batch_size,train_in,train_out,loss_function)]
-            if with_f1_macro:
-                for_plot_f1_macro_train += [self._get_f1_macro(train_in,train_out)]
-            if test_present:
-                for_plot_loss_test += [self._get_current_loss(N_test,batch_size_test,test_in,test_out,loss_function)]
-                if with_f1_macro:
-                    for_plot_f1_macro_test += [self._get_f1_macro(test_in,test_out)]
-## prints
-            if verbose:
-                self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present\
-                                            ,loss_function=loss_function)
-## backprop
             for batch_part_no in list(range(0,min(math.ceil(N/batch_size),N))):
                 batch_train_input_array = train_input_array[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
                 batch_train_output_array = train_output_array[batch_part_no*batch_size:(batch_part_no+1)*batch_size]
@@ -368,31 +372,22 @@ class NeuralNetwork:
                     self._backprop_update_weights(learning_rate,weights_grad)
                 else:
                     self._backprop_update_weights(learning_rate,weights_grad)
-## prints                
-            print(f"End of Epoch {epoch+1}, Weights:\n {self.weights}\n") if debug else None
-            if epoch % math.ceil(epochs/10) == 0:
-                self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present,
-                                            loss_function=loss_function)
+## plots update
+            for_plot_weights += [copy.deepcopy(self.weights)]
+            for_plot_loss_train += [self._get_current_loss(N,batch_size,train_in,train_out,loss_function)]
+            if with_f1_macro:
+                for_plot_f1_macro_train += [self._get_f1_macro(train_in,train_out)]
+            if test_present:
+                for_plot_loss_test += [self._get_current_loss(N_test,batch_size_test,test_in,test_out,loss_function)]
                 if with_f1_macro:
-                    self._print_formatted_f1_macro(for_plot_f1_macro_train[-1],for_plot_f1_macro_test[-1] if test_present else None)
-                self.training_history = {"weights_history":for_plot_weights,\
-                                        "loss_train":for_plot_loss_train,\
-                                        "loss_test":for_plot_loss_test,\
-                                        "f1_macro_train":for_plot_f1_macro_train,\
-                                        "f1_macro_test":for_plot_f1_macro_test}                                        
-        self._print_formatted_loss(epoch,epochs,for_plot_loss_train[-1],for_plot_loss_test[-1] if test_present else None,with_test=test_present\
-                                    ,loss_function=loss_function)
-        if with_f1_macro:
-            self._print_formatted_f1_macro(for_plot_f1_macro_train[-1],for_plot_f1_macro_test[-1] if test_present else None)    
-        self.training_history = {"weights_history":for_plot_weights,\
-                                "loss_train":for_plot_loss_train,\
-                                "loss_test":for_plot_loss_test,\
-                                "f1_macro_train":for_plot_f1_macro_train,\
-                                "f1_macro_test":for_plot_f1_macro_test}  
-        if verbose:
-            return self.training_history
-        else:
-            return None
+                    for_plot_f1_macro_test += [self._get_f1_macro(test_in,test_out)]
+## prints                
+            if epoch % math.ceil(epochs/10) == 0:
+                self._after_epoch_prints_and_data_saving(epoch,epochs,for_plot_weights,for_plot_loss_train,for_plot_loss_test,
+                                                            for_plot_f1_macro_train,for_plot_f1_macro_test,loss_function)               
+        self._after_epoch_prints_and_data_saving(epoch,epochs,for_plot_weights,for_plot_loss_train,for_plot_loss_test,
+                                                    for_plot_f1_macro_train,for_plot_f1_macro_test,loss_function) 
+
 
     def get_training_history(self):
         return self.training_history
