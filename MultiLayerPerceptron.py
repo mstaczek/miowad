@@ -111,7 +111,7 @@ class Layer:
 
 class LossMSE:
     def __init__(self):
-        pass
+        self._can_get_f1 = False
     def __str__(self):
         return "MSE"
     def loss(self,real, pred):      
@@ -130,7 +130,7 @@ class LossMSE:
 
 class LossCrossEntropy:
     def __init__(self):
-        pass
+        self._can_get_f1 = True
     def __str__(self):
         return "CrossEntropy"
     def loss(self,y_pred,y_true):
@@ -271,9 +271,6 @@ class NeuralNetwork:
         for j in range(len(self.weights)):
             self.weights[j] -= learning_rate * weights_grad[j]
     
-    def _get_current_loss(self,samples_count,batch_size,in_raw,out_raw, loss_function):
-        return loss_function.loss(self.predict(in_raw),out_raw)
-    
     def _f1_per_class(self, y_true, y_pred):
         TP = np.sum(np.multiply([i==True for i in y_pred], y_true))
         TN = np.sum(np.multiply([i==False for i in y_pred], [not(j) for j in y_true]))
@@ -309,35 +306,25 @@ class NeuralNetwork:
                 txt += f",  test:{round(f1_macro_test[-1],3):>9}"
         print(txt)
 
-    def _update_training_history(self,weights,loss_train,loss_test,f1_train,f1_test):
-        self.training_history = {"weights_history":weights,"loss_train":loss_train,"loss_test":loss_test,\
-                                "f1_macro_train":f1_train,"f1_macro_test":f1_test}  
-
-    def _after_epoch_prints_and_data_saving(self,epoch,epochs,weights,loss_train,loss_test,f1_train,f1_test,loss_function):
-        self._print_formatted_loss_f1(epoch,epochs,loss_function=loss_function)
+    def _update_training_history(self,train_in, train_out, test_in, test_out,loss_function):
+        self.training_history["weights_history"] += [copy.deepcopy(self.weights)]
+        self.training_history["loss_train"] += [loss_function.loss(self.predict(train_in),train_out)]
+        if loss_function._can_get_f1:
+            self.training_history["f1_macro_train"] += [self._get_f1_macro(train_in,train_out)]
+        if test_in is not None and test_out is not None:
+            self.training_history["loss_test"] += [loss_function.loss(self.predict(test_in),test_out)]
+            if loss_function._can_get_f1:
+                self.training_history["f1_macro_test"] += [self._get_f1_macro(test_in,test_out)]
                                 
     def train(self, train_in, train_out, test_in=None, test_out=None, loss_function=LossMSE(),learning_rate=0.01, epochs=1, \
                 batch_size=32, with_moment=False,moment_decay=0.9,with_rms_prop=False,\
-                rms_prop_decay=0.5,with_f1_macro=False):
+                rms_prop_decay=0.5):
         train_input_array = np.array(train_in)
         train_output_array = np.array(train_out)
         N = len(train_input_array)
         batch_size = min(batch_size,N) if batch_size > 0 else N
-## plots  
-        for_plot_weights = self.training_history["weights_history"]
-        for_plot_loss_train = self.training_history["loss_train"]
-        for_plot_loss_test = self.training_history["loss_test"]
-        for_plot_f1_macro_train = self.training_history["f1_macro_train"]
-        for_plot_f1_macro_test = self.training_history["f1_macro_test"]
-## plots update
-        self.training_history["weights_history"] += [copy.deepcopy(self.weights)]
-        self.training_history["loss_train"] += [loss_function.loss(self.predict(train_in),train_out)]
-        if with_f1_macro:
-            self.training_history["f1_macro_train"] += [self._get_f1_macro(train_in,train_out)]
-        if test_in is not None and test_out is not None:
-            self.training_history["loss_test"] += [loss_function.loss(self.predict(test_in),test_out)]
-            if with_f1_macro:
-                self.training_history["f1_macro_test"] += [self._get_f1_macro(test_in,test_out)]
+        self._update_training_history(train_in, train_out, test_in, test_out,loss_function)
+             
 ## backprop
         if with_moment:
             moment_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]
@@ -362,21 +349,11 @@ class NeuralNetwork:
                     self._backprop_update_weights(learning_rate,weights_grad)
                 else:
                     self._backprop_update_weights(learning_rate,weights_grad)
-## plots update
-            self.training_history["weights_history"] += [copy.deepcopy(self.weights)]
-            self.training_history["loss_train"] += [loss_function.loss(self.predict(train_in),train_out)]
-            if with_f1_macro:
-                self.training_history["f1_macro_train"] += [self._get_f1_macro(train_in,train_out)]
-            if test_in is not None and test_out is not None:
-                self.training_history["loss_test"] += [loss_function.loss(self.predict(test_in),test_out)]
-                if with_f1_macro:
-                    self.training_history["f1_macro_test"] += [self._get_f1_macro(test_in,test_out)]
 ## prints                
+            self._update_training_history(train_in, train_out, test_in, test_out,loss_function)
             if epoch % math.ceil(epochs/10) == 0:
-                self._after_epoch_prints_and_data_saving(epoch,epochs,for_plot_weights,for_plot_loss_train,for_plot_loss_test,
-                                                            for_plot_f1_macro_train,for_plot_f1_macro_test,loss_function)               
-        self._after_epoch_prints_and_data_saving(epoch,epochs,for_plot_weights,for_plot_loss_train,for_plot_loss_test,
-                                                    for_plot_f1_macro_train,for_plot_f1_macro_test,loss_function) 
+                self._print_formatted_loss_f1(epoch,epochs,loss_function=loss_function)
+        self._print_formatted_loss_f1(epoch,epochs,loss_function=loss_function)
 
 
     def get_training_history(self):
