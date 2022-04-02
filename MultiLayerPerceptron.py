@@ -72,9 +72,9 @@ class ActivationReLU:
     def __str__(self):
         return "relu"
     def forw(self,x):
-        return x if x > 0 else 0
+        return x * (x > 0)
     def grad(self,x):
-        return 1 if x > 0 else 0     
+        return 1 * (x > 0)     
 
 class ActivationSoftmax:
     def __init__(self):
@@ -324,7 +324,6 @@ class NeuralNetwork:
         N = len(train_input_array)
         batch_size = min(batch_size,N) if batch_size > 0 else N
         self._update_training_history(train_in, train_out, test_in, test_out,loss_function)
-             
 ## backprop
         if with_moment:
             moment_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]
