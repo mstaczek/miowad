@@ -110,8 +110,8 @@ class Layer:
         return txt
 
 class LossMSE:
-    def __init__(self):
-        self._can_get_f1 = False
+    def __init__(self, f1_score=False):
+        self._can_get_f1 = f1_score
     def __str__(self):
         return "MSE"
     def loss(self,real, pred):      
@@ -129,8 +129,8 @@ class LossMSE:
 
 
 class LossCrossEntropy:
-    def __init__(self):
-        self._can_get_f1 = True
+    def __init__(self,f1_score=True):
+        self._can_get_f1 = f1_score
     def __str__(self):
         return "CrossEntropy"
     def loss(self,y_pred,y_true):
