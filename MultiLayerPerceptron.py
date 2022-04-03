@@ -356,7 +356,7 @@ class NeuralNetwork:
 
     def train(self, train_in, train_out, test_in=None, test_out=None, loss_function=LossMSE(),learning_rate=0.01, epochs=1, \
                 batch_size=32, with_moment=False,moment_decay=0.9,with_rms_prop=False,\
-                rms_prop_decay=0.5, regularization=RegularizationNone(), stop_on_test_set_error_increase=False):
+                rms_prop_decay=0.5, regularization=RegularizationNone(), stop_on_test_set_error_increase=False, quiet=False):
         train_input_array = np.array(train_in)
         train_output_array = np.array(train_out)
         N = len(train_input_array)
@@ -388,12 +388,12 @@ class NeuralNetwork:
                     self._backprop_update_weights(learning_rate,weights_grad,regularization)
 ## prints                
             self._update_training_history(train_in, train_out, test_in, test_out,loss_function, regularization)
-            if epoch % math.ceil(epochs/10) == 0:
+            if epoch % math.ceil(epochs/10) == 0 and not quiet:
                 self._print_formatted_loss_f1(epoch,epochs,loss_function=loss_function)
 ## early stopping            
             if stop_on_test_set_error_increase:
                 if len(self.training_history["loss_test"])>1:
-                    if self.training_history["loss_test"][-1] > self.training_history["loss_test"][-2]:
+                    if self.training_history["loss_test"][-1] > self.training_history["loss_test"][-2] * stop_on_test_set_error_increase:
                         print("Early stopping: test error increased from "+str(round(self.training_history["loss_test"][-2],5))+" to "+str(round(self.training_history["loss_test"][-1],5)))
                         break
         self._print_formatted_loss_f1(epoch,epochs,loss_function=loss_function)
