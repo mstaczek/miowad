@@ -142,7 +142,34 @@ class LossCrossEntropy:
         return ce
     def get_errors_for_last_layer(self, y_pred, y_real, grads_last_layer):
         return y_pred - y_real
+
+class RegularizationNone:
+    def __str__(self):
+        return "None"
+    def loss(self,weights):
+        return 0
+    def grad(self,weights):
+        return [np.zeros(weights_i.shape) for weights_i in weights]
+
+class RegularizationL1:
+    def __init__(self,reg_param=0.1):
+        self.reg_param = reg_param
+    def __str__(self):
+        return "L1"
+    def loss(self,weights):
+        return self.reg_param * np.sum(np.array([np.sum(np.abs(weights_i)) for weights_i in weights]))
+    def grad(self,weights):
+        return [self.reg_param * np.sign(weights_i) for weights_i in weights]
         
+class RegularizationL2:
+    def __init__(self,reg_param=0.1):
+        self.reg_param = reg_param
+    def __str__(self):
+        return "L2"
+    def loss(self,weights):
+        return self.reg_param * np.sum(np.array([np.sum(np.square(weights_i)) for weights_i in weights])) 
+    def grad(self,weights):
+        return [2 * self.reg_param * weights_i for weights_i in weights]
 
 class NeuralNetwork:
     def __init__(self, weights_random = True, weights_randomizer = "xavier"):
@@ -239,7 +266,7 @@ class NeuralNetwork:
         last_layer = self.layers[-1]
         last_layer.neurons_error_vals = loss_function.get_errors_for_last_layer(y_pred = last_layer.neurons_vals,\
                                                                                 y_real = expected_output,\
-                                                                                grads_last_layer = last_layer.neurons_grad_vals) # for mse
+                                                                                grads_last_layer = last_layer.neurons_grad_vals)
         for j in range(len(self.weights)-1,0,-1): # over all layers, updating errors except last layer 
             layer_in = self.layers[j]
             layer_out = self.layers[j+1]
@@ -267,9 +294,11 @@ class NeuralNetwork:
             net_weights_grad_new.append(net_weights_j_grad)
         return net_weights_grad_new
 
-    def _backprop_update_weights(self,learning_rate,weights_grad):
+    def _backprop_update_weights(self,learning_rate,weights_grad, regularization):
+        regularization_grads = self._add_regularization_term_to_gradients(regularization)
         for j in range(len(self.weights)):
-            self.weights[j] -= learning_rate * weights_grad[j]
+            self.weights[j] -= learning_rate * (weights_grad[j] + regularization_grads[j])
+
     
     def _f1_per_class(self, y_true, y_pred):
         TP = np.sum(np.multiply([i==True for i in y_pred], y_true))
@@ -306,25 +335,34 @@ class NeuralNetwork:
                 txt += f",  test:{round(f1_macro_test[-1],3):>9}"
         print(txt)
 
-    def _update_training_history(self,train_in, train_out, test_in, test_out,loss_function):
+    def _get_loss_with_reg(self, y, y_hat,loss_function, regularization):
+        return loss_function.loss(y_hat, y) + regularization.loss(self.weights)
+
+    def _update_training_history(self,train_in, train_out, test_in, test_out,loss_function, regularization):
         self.training_history["weights_history"] += [copy.deepcopy(self.weights)]
-        self.training_history["loss_train"] += [loss_function.loss(self.predict(train_in),train_out)]
+        self.training_history["loss_train"] += [self._get_loss_with_reg(self.predict(train_in),train_out,loss_function, regularization)] 
         if loss_function._can_get_f1:
             self.training_history["f1_macro_train"] += [self._get_f1_macro(train_in,train_out)]
         if test_in is not None and test_out is not None:
-            self.training_history["loss_test"] += [loss_function.loss(self.predict(test_in),test_out)]
+            self.training_history["loss_test"] += [self._get_loss_with_reg(self.predict(test_in),test_out,loss_function, regularization)] 
             if loss_function._can_get_f1:
                 self.training_history["f1_macro_test"] += [self._get_f1_macro(test_in,test_out)]
                                 
+    def _add_regularization_term_to_gradients(self, regularization):
+        reg_grad_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]
+        for j in range(len(self.weights)):
+            reg_grad_weights[j] += regularization.grad(self.weights[j])
+        return reg_grad_weights
+
     def train(self, train_in, train_out, test_in=None, test_out=None, loss_function=LossMSE(),learning_rate=0.01, epochs=1, \
                 batch_size=32, with_moment=False,moment_decay=0.9,with_rms_prop=False,\
-                rms_prop_decay=0.5):
+                rms_prop_decay=0.5, regularization=RegularizationNone(), stop_on_test_set_error_increase=False):
         train_input_array = np.array(train_in)
         train_output_array = np.array(train_out)
         N = len(train_input_array)
         batch_size = min(batch_size,N) if batch_size > 0 else N
-        self._update_training_history(train_in, train_out, test_in, test_out,loss_function)
-## backprop
+        self._update_training_history(train_in, train_out, test_in, test_out,loss_function, regularization)
+## training
         if with_moment:
             moment_weights = [np.zeros(weights_i.shape) for weights_i in self.weights]
         if with_rms_prop:
@@ -341,17 +379,23 @@ class NeuralNetwork:
                     weights_grad = [weights_grad[j] + weights_grad_new[j] for j in range(len(self.weights))]
                 if with_moment:
                     moment_weights = [moment_weights[j] * moment_decay + weights_grad[j] for j in range(len(self.weights))]
-                    self._backprop_update_weights(learning_rate,moment_weights)
+                    self._backprop_update_weights(learning_rate,moment_weights,regularization)
                 elif with_rms_prop:
                     rms_prop_weights = [rms_prop_decay * rms_prop_weights[j] + (1 - rms_prop_decay) * weights_grad[j]**2 for j in range(len(self.weights))]
                     weights_grad = [weights_grad[j]/rms_prop_weights[j]**0.5 for j in range(len(self.weights))]
-                    self._backprop_update_weights(learning_rate,weights_grad)
+                    self._backprop_update_weights(learning_rate,weights_grad,regularization)
                 else:
-                    self._backprop_update_weights(learning_rate,weights_grad)
+                    self._backprop_update_weights(learning_rate,weights_grad,regularization)
 ## prints                
-            self._update_training_history(train_in, train_out, test_in, test_out,loss_function)
+            self._update_training_history(train_in, train_out, test_in, test_out,loss_function, regularization)
             if epoch % math.ceil(epochs/10) == 0:
                 self._print_formatted_loss_f1(epoch,epochs,loss_function=loss_function)
+## early stopping            
+            if stop_on_test_set_error_increase:
+                if len(self.training_history["loss_test"])>1:
+                    if self.training_history["loss_test"][-1] > self.training_history["loss_test"][-2]:
+                        print("Early stopping: test error increased from "+str(round(self.training_history["loss_test"][-2],5))+" to "+str(round(self.training_history["loss_test"][-1],5)))
+                        break
         self._print_formatted_loss_f1(epoch,epochs,loss_function=loss_function)
 
 
