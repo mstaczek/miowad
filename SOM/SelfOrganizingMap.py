@@ -4,16 +4,16 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import RegularPolygon
 
 
-def NeighbourhoodGaussian(distance, epoch, epochs):
+def NeighbourhoodGaussian(distance, epoch):
     return np.exp(-1 * epoch**2 * distance**2) 
 
-def NeighbourhoodMexicanHat(distance, epoch, epochs):
+def NeighbourhoodMexicanHat(distance, epoch):
     e_2 = epoch**2
     d_2 = distance**2
     return (2 * e_2 - 4 * e_2**2 * d_2) * np.exp(-1 * e_2 * d_2)
 
 class SelfOrganizingMap:
-    def __init__(self,width, height, features, hexagonal_map=False):
+    def __init__(self,width,height, features, hexagonal_map=False):
         self.width = width
         self.height = height
         self.features = features
@@ -29,19 +29,19 @@ class SelfOrganizingMap:
             cord_y = self.map_coords_xy[0]
             cord_y = cord_y.astype(float)
             cord_y = cord_y * np.sqrt(3)
-            cord_y[:,(np.arange(self.width)*2)[np.arange(self.width)*2 < self.width]] += np.sqrt(3)/2
+            cord_y[:,(np.arange(self.height)*2)[np.arange(self.height)*2 < self.height]] += np.sqrt(3)/2
 
             cord_x = self.map_coords_xy[1]
             cord_x = cord_x.astype(float)
             cord_x = cord_x * 3/2
 
-            self.map_coords_xy = (cord_x,cord_y)
+            self.map_coords_xy = (cord_y,cord_x)
         
     def init_weights(self, data=None): # randomize if data is None else sample from data
         if data is None:
-            self.weights = np.random.normal(size=(self.height,self.width,self.features))
+            self.weights = np.random.normal(size=(self.width,self.height,self.features))
         else:
-            size = (self.height,self.width,-1)
+            size = (self.width,self.height,-1)
             selected_points = [data[np.random.randint(len(data))] for i in range(size[0]*size[1])]
             self.weights = np.array(selected_points).reshape(size) 
 
@@ -63,10 +63,11 @@ class SelfOrganizingMap:
                 winning = self.winner_for_sample(data_row)
                 distances_from_winning = self.get_distances(winning) * neighbourhood_scaler
                 self.weights += distance_function(distances_from_winning, epoch, epochs).\
-                                reshape(self.height,self.width,-1) * lr_current * (data_row - self.weights) 
+                                reshape(self.width,self.height,-1) * lr_current * (data_row - self.weights) 
 
     def plot_map(self, data, classes):
-        fig, ax = plt.subplots(figsize=(5,5))
+        max_dim = max(self.width, self.height)
+        fig, ax = plt.subplots(figsize=(self.width/max_dim*5,self.height/max_dim*5))
         markers = ['o','s','D',"P","*","+",'v', '1', '3', 'p', 'x']
         colors = ['r','g','b','c','k','y',(0.9,0.2,0.9), (1,0.5,0), (1,1,0.3), "m", (0.4,0.6,0)]
 
@@ -76,7 +77,7 @@ class SelfOrganizingMap:
         if self.use_hexagonal_map:
             numVertices = 6
             radius = 1
-            orientation = np.radians(30)
+            orientation = np.radians(0)
             axis_limits = [np.min(cords_x)-1/2*np.sqrt(3),np.max(cords_x)+3/2*np.sqrt(3),np.min(cords_y)-1/2,np.max(cords_y)+5/2]
         else:
             numVertices = 4
