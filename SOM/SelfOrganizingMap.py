@@ -62,7 +62,7 @@ class SelfOrganizingMap:
             for data_row in data_copy:
                 winning = self.winner_for_sample(data_row)
                 distances_from_winning = self.get_distances(winning) * neighbourhood_scaler
-                self.weights += distance_function(distances_from_winning, epoch, epochs).\
+                self.weights += distance_function(distances_from_winning, epoch).\
                                 reshape(self.width,self.height,-1) * lr_current * (data_row - self.weights) 
 
     def plot_map(self, data, classes):
