@@ -10,7 +10,7 @@ def NeighbourhoodGaussian(distance, epoch):
 def NeighbourhoodMexicanHat(distance, epoch):
     e_2 = epoch**2
     d_2 = distance**2
-    return (2 * e_2 - 4 * e_2**2 * d_2) * np.exp(-1 * e_2 * d_2)
+    return (1 - distance) * np.exp(-1 * e_2 * d_2)
 
 class SelfOrganizingMap:
     def __init__(self,width,height, features, hexagonal_map=False):
@@ -65,9 +65,13 @@ class SelfOrganizingMap:
                 self.weights += distance_function(distances_from_winning, epoch).\
                                 reshape(self.width,self.height,-1) * lr_current * (data_row - self.weights) 
 
-    def plot_map(self, data, classes):
+    def plot_map(self, data, classes, title=None, ax=None):
         max_dim = max(self.width, self.height)
-        fig, ax = plt.subplots(figsize=(self.width/max_dim*5,self.height/max_dim*5))
+        ax_original = ax
+        if ax_original is None:
+            fig, ax = plt.subplots(figsize=(self.width/max_dim*5,self.height/max_dim*5))
+        else: 
+            ax = ax_original
         markers = ['o','s','D',"P","*","+",'v', '1', '3', 'p', 'x']
         colors = ['r','g','b','c','k','y',(0.9,0.2,0.9), (1,0.5,0), (1,1,0.3), "m", (0.4,0.6,0)]
 
@@ -124,5 +128,11 @@ class SelfOrganizingMap:
             )
 
         ax.axis(axis_limits)
-        ax.set_title("Data represented by the Kohonen Network")
-        plt.show() 
+        if title is not None:
+            ax.set_title(title)
+        else:
+            ax.set_title("Data represented by the Kohonen Network")
+        if ax_original is None:
+            plt.show()
+        else:
+            return
