@@ -65,7 +65,7 @@ class SelfOrganizingMap:
                 self.weights += distance_function(distances_from_winning, epoch).\
                                 reshape(self.width,self.height,-1) * lr_current * (data_row - self.weights) 
 
-    def plot_map(self, data, classes, title=None, ax=None):
+    def plot_map(self, data, classes, title=None, ax=None, symbols=True):
         max_dim = max(self.width, self.height)
         ax_original = ax
         if ax_original is None:
@@ -106,15 +106,16 @@ class SelfOrganizingMap:
         # plot colored map with classes markers
         for cnt,xx in enumerate(data):
             w = self.winner_for_sample(xx)
-            ax.plot(
-                cords_x[w[0],w[1]]+1,
-                cords_y[w[0],w[1]]+1,
-                markers[classes[cnt][0]],
-                markerfacecolor='None',
-                markeredgecolor=colors[classes[cnt][0]],
-                markersize=12+classes[cnt]*2,
-                markeredgewidth=2
-            )
+            if symbols:
+                ax.plot(
+                    cords_x[w[0],w[1]]+1,
+                    cords_y[w[0],w[1]]+1,
+                    markers[classes[cnt][0]],
+                    markerfacecolor='None',
+                    markeredgecolor=colors[classes[cnt][0]],
+                    markersize=12+classes[cnt]*2,
+                    markeredgewidth=2
+                )
             ax.add_patch(
                 RegularPolygon(
                     (cords_x[w[0],w[1]] + 1, cords_y[w[0],w[1]] + 1),
