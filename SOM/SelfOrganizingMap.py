@@ -2,6 +2,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import RegularPolygon
+import matplotlib.patches as mpatches
 
 
 def NeighbourhoodGaussian(distance, epoch):
@@ -65,7 +66,7 @@ class SelfOrganizingMap:
                 self.weights += distance_function(distances_from_winning, epoch).\
                                 reshape(self.width,self.height,-1) * lr_current * (data_row - self.weights) 
 
-    def plot_map(self, data, classes, title=None, ax=None, symbols=True):
+    def plot_map(self, data, classes, title=None, ax=None, symbols=True, labels=None):
         max_dim = max(self.width, self.height)
         ax_original = ax
         if ax_original is None:
@@ -102,31 +103,45 @@ class SelfOrganizingMap:
                     edgecolor='k'
                 )
             )
+        # count number of winning neurons from each class for every neuron
+        winning_count = np.zeros((self.width,self.height,len(np.unique(classes))))
 
         # plot colored map with classes markers
-        for cnt,xx in enumerate(data):
-            w = self.winner_for_sample(xx)
+        for i,data_row in enumerate(data):
+            w = self.winner_for_sample(data_row)
+            winning_count[w[0],w[1],classes[i][0]] += 1
+
             if symbols:
                 ax.plot(
                     cords_x[w[0],w[1]]+1,
                     cords_y[w[0],w[1]]+1,
-                    markers[classes[cnt][0]],
+                    markers[classes[i][0]],
                     markerfacecolor='None',
-                    markeredgecolor=colors[classes[cnt][0]],
-                    markersize=12+classes[cnt]*2,
+                    markeredgecolor=colors[classes[i][0]],
+                    markersize=12+classes[i]*2,
                     markeredgewidth=2
                 )
+
             ax.add_patch(
                 RegularPolygon(
                     (cords_x[w[0],w[1]] + 1, cords_y[w[0],w[1]] + 1),
                     numVertices = numVertices,
                     radius = radius,             
                     orientation = orientation,             
-                    facecolor = colors[classes[cnt][0]],
+                    facecolor = colors[classes[i][0]],
                     alpha = 0.05,
                     edgecolor = 'k'
                 )
             )
+
+        if labels is not None:
+            # for each neuron add text with the most common winning class
+            winning_class = np.argmax(winning_count, axis=2)
+            for i in range(self.width):
+                for j in range(self.height):
+                    plt.text(self.map_coords_xy[0][i,j]+1,self.map_coords_xy[1][i,j]+1,
+                            labels[winning_class[i,j]],
+                            ha='center', va='center',fontsize=12)
 
         ax.axis(axis_limits)
         if title is not None:
